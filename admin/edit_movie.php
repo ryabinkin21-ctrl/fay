@@ -29,38 +29,45 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $poster = $movie["poster"];
 
 if (!empty($_FILES["poster"]["name"])) {
-
-    $fileName = time() . "_" . basename($_FILES["poster"]["name"]);
-
-    $target = "../assets/uploads/" . $fileName;
-
-    move_uploaded_file($_FILES["poster"]["tmp_name"], $target);
-
-    $poster = "assets/uploads/" . $fileName;
+    $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+    $ext = strtolower(pathinfo($_FILES["poster"]["name"], PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowed, true) || !getimagesize($_FILES["poster"]["tmp_name"])) {
+        $message = "Only JPG, PNG, WebP and GIF images are allowed.";
+    } else {
+        $fileName = time() . "_" . basename($_FILES["poster"]["name"]);
+        $target = "../assets/uploads/" . $fileName;
+        if (move_uploaded_file($_FILES["poster"]["tmp_name"], $target)) {
+            $poster = "assets/uploads/" . $fileName;
+        } else {
+            $message = "Failed to save uploaded file.";
+        }
+    }
 }
 
-    if (empty($title) || empty($genre) || empty($director)) {
-        $message = "Please fill in the required fields.";
-    } else {
-        $stmt = $pdo->prepare("
-            UPDATE movies
-            SET title = ?, year = ?, genre = ?, director = ?, description = ?, poster = ?, rating = ?
-            WHERE id = ?
-        ");
+    if (empty($message)) {
+        if (empty($title) || empty($genre) || empty($director)) {
+            $message = "Please fill in the required fields.";
+        } else {
+            $stmt = $pdo->prepare("
+                UPDATE movies
+                SET title = ?, year = ?, genre = ?, director = ?, description = ?, poster = ?, rating = ?
+                WHERE id = ?
+            ");
 
-        $stmt->execute([
-            $title,
-            $year,
-            $genre,
-            $director,
-            $description,
-            $poster,
-            $rating,
-            $id
-        ]);
+            $stmt->execute([
+                $title,
+                $year,
+                $genre,
+                $director,
+                $description,
+                $poster,
+                $rating,
+                $id
+            ]);
 
-        header("Location: dashboard.php");
-        exit;
+            header("Location: dashboard.php");
+            exit;
+        }
     }
 }
 ?>

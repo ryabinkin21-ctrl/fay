@@ -50,11 +50,41 @@ if (isset($_GET['tmdb_id'])) {
     die('Movie not found');
 }
 
-// POST: submit review
+// POST: submit / update / delete review
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SESSION['user_id'])) {
+    $user_id  = (int)$_SESSION['user_id'];
+    $action   = $_POST['action'] ?? 'submit';
+    $location = $mode === 'tmdb' ? "movie.php?tmdb_id={$tmdbId}" : "movie.php?id={$localMovieId}";
+
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        header("Location: $location");
+        exit;
+    }
+
+    if ($action === 'delete_review') {
+        $reviewId = (int)($_POST['review_id'] ?? 0);
+        $row = $pdo->prepare("SELECT movie_id FROM reviews WHERE id = ? AND user_id = ?");
+        $row->execute([$reviewId, $user_id]);
+        $rev = $row->fetch();
+        if ($rev) {
+            $pdo->prepare("DELETE FROM reviews WHERE id = ?")->execute([$reviewId]);
+            $mid = (int)$rev['movie_id'];
+            $avg = $pdo->prepare("
+                SELECT AVG(r.score) AS a FROM reviews r
+                INNER JOIN (SELECT user_id, MAX(id) AS latest_id FROM reviews WHERE movie_id = ? GROUP BY user_id) t
+                ON r.id = t.latest_id
+            ");
+            $avg->execute([$mid]);
+            $newRating = $avg->fetch()['a'];
+            $pdo->prepare("UPDATE movies SET rating = ? WHERE id = ?")
+                ->execute([$newRating ? round($newRating, 1) : null, $mid]);
+        }
+        header("Location: $location");
+        exit;
+    }
+
     $score       = (int)($_POST['score'] ?? 0);
     $review_text = trim($_POST['review_text'] ?? '');
-    $user_id     = (int)$_SESSION['user_id'];
 
     if ($score < 1 || $score > 10) {
         $message = t('pick_first');
@@ -77,15 +107,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SESSION['user_id'])) {
             $localMovieId = (int)$pdo->lastInsertId();
         }
 
-        $pdo->prepare("INSERT INTO reviews (movie_id, user_id, review_text, score) VALUES (?,?,?,?)")
-            ->execute([$localMovieId, $user_id, $review_text, $score]);
+        if ($action === 'update_review') {
+            $reviewId = (int)($_POST['review_id'] ?? 0);
+            $check = $pdo->prepare("SELECT id FROM reviews WHERE id = ? AND user_id = ?");
+            $check->execute([$reviewId, $user_id]);
+            if ($check->fetch()) {
+                $pdo->prepare("UPDATE reviews SET score = ?, review_text = ? WHERE id = ?")
+                    ->execute([$score, $review_text, $reviewId]);
+            }
+        } else {
+            $pdo->prepare("INSERT INTO reviews (movie_id, user_id, review_text, score) VALUES (?,?,?,?)")
+                ->execute([$localMovieId, $user_id, $review_text, $score]);
+        }
 
-        $avg = $pdo->prepare("SELECT AVG(score) AS a FROM reviews WHERE movie_id = ?");
+        $avg = $pdo->prepare("
+            SELECT AVG(r.score) AS a
+            FROM reviews r
+            INNER JOIN (
+                SELECT user_id, MAX(id) AS latest_id
+                FROM reviews WHERE movie_id = ?
+                GROUP BY user_id
+            ) t ON r.id = t.latest_id
+        ");
         $avg->execute([$localMovieId]);
         $pdo->prepare("UPDATE movies SET rating = ? WHERE id = ?")
             ->execute([round($avg->fetch()['a'], 1), $localMovieId]);
 
-        $location = $mode === 'tmdb' ? "movie.php?tmdb_id={$tmdbId}" : "movie.php?id={$localMovieId}";
         header("Location: $location");
         exit;
     }
@@ -116,13 +163,25 @@ if ($trailerTmdbId) {
 $reviews = [];
 if ($localMovieId) {
     $revStmt = $pdo->prepare("
-        SELECT reviews.*, users.username
+        SELECT reviews.*, users.username,
+            (SELECT COUNT(*) FROM reviews r2
+             WHERE r2.movie_id = reviews.movie_id
+               AND r2.user_id = reviews.user_id
+               AND r2.id < reviews.id) AS watch_number
         FROM reviews JOIN users ON reviews.user_id = users.id
         WHERE reviews.movie_id = ?
         ORDER BY reviews.created_at DESC
     ");
     $revStmt->execute([$localMovieId]);
     $reviews = $revStmt->fetchAll();
+}
+
+// Fetch current user's latest review for pre-filling the form
+$userReview = null;
+if (isset($_SESSION['user_id']) && $localMovieId) {
+    $urStmt = $pdo->prepare("SELECT * FROM reviews WHERE movie_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1");
+    $urStmt->execute([$localMovieId, (int)$_SESSION['user_id']]);
+    $userReview = $urStmt->fetch() ?: null;
 }
 
 require 'includes/header.php';
@@ -210,13 +269,35 @@ require 'includes/header.php';
                         <?php echo strtoupper(substr($review['username'], 0, 2)); ?>
                     </div>
                     <div>
-                        <h4><?php echo htmlspecialchars($review['username']); ?></h4>
+                        <h4>
+                            <?php echo htmlspecialchars($review['username']); ?>
+                            <?php if ($review['watch_number'] > 0): ?>
+                                <span class="rewatch-badge"><?php echo t('rewatch'); ?></span>
+                            <?php endif; ?>
+                        </h4>
                         <?php if (!empty($review['review_text'])): ?>
                             <p><?php echo htmlspecialchars($review['review_text']); ?></p>
                         <?php else: ?>
                             <p class="muted-text"><?php echo t('no_written'); ?></p>
                         <?php endif; ?>
                         <small><?php echo $review['created_at']; ?></small>
+                        <?php if (isset($_SESSION['user_id']) && (int)$review['user_id'] === (int)$_SESSION['user_id']): ?>
+                        <div class="review-actions">
+                            <a class="review-edit-btn" href="#write-review"
+                               data-id="<?php echo $review['id']; ?>"
+                               data-score="<?php echo $review['score']; ?>"
+                               data-text="<?php echo htmlspecialchars($review['review_text'], ENT_QUOTES); ?>">
+                                <?php echo t('edit_review'); ?>
+                            </a>
+                            <form method="POST" style="display:inline"
+                                  onsubmit="return confirm(<?php echo json_encode(t('delete_confirm')); ?>);">
+                                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                                <input type="hidden" name="action" value="delete_review">
+                                <input type="hidden" name="review_id" value="<?php echo $review['id']; ?>">
+                                <button type="submit" class="review-delete-btn"><?php echo t('delete_review'); ?></button>
+                            </form>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <strong>&#9733; <?php echo $review['score']; ?>/10</strong>
                 </div>
@@ -229,13 +310,17 @@ require 'includes/header.php';
 
 <?php if (isset($_SESSION['user_id'])): ?>
 <section id="write-review" class="write-review">
-    <h2><?php echo t('write_review'); ?></h2>
+    <h2 id="reviewFormTitle"><?php echo $userReview ? t('edit_review_title') : t('write_review'); ?></h2>
 
     <?php if ($message): ?>
         <p class="message"><?php echo htmlspecialchars($message); ?></p>
     <?php endif; ?>
 
     <form method="POST" id="reviewForm">
+        <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+        <input type="hidden" name="action" id="reviewAction" value="<?php echo $userReview ? 'update_review' : 'submit'; ?>">
+        <input type="hidden" name="review_id" id="reviewId" value="<?php echo $userReview ? $userReview['id'] : ''; ?>">
+
         <label><?php echo t('your_rating'); ?></label>
         <div class="rating-picker">
             <div class="rating-numbers" id="ratingNumbers">
@@ -243,25 +328,34 @@ require 'includes/header.php';
                     <button type="button" class="r-btn" data-val="<?php echo $i; ?>"><?php echo $i; ?></button>
                 <?php endfor; ?>
             </div>
-            <input type="hidden" name="score" id="scoreInput" value="">
-            <span class="rating-label" id="ratingLabel"><?php echo t('choose_score'); ?></span>
+            <input type="hidden" name="score" id="scoreInput" value="<?php echo $userReview ? $userReview['score'] : ''; ?>">
+            <span class="rating-label" id="ratingLabel"><?php echo $userReview ? t('your_score') : t('choose_score'); ?></span>
         </div>
 
         <label><?php echo t('your_review'); ?></label>
-        <textarea name="review_text" placeholder="<?php echo htmlspecialchars(t('review_ph')); ?>"></textarea>
+        <textarea name="review_text" placeholder="<?php echo htmlspecialchars(t('review_ph')); ?>"><?php echo $userReview ? htmlspecialchars($userReview['review_text']) : ''; ?></textarea>
 
-        <button type="submit"><?php echo t('submit_review'); ?></button>
+        <button type="submit" id="reviewSubmitBtn"><?php echo $userReview ? t('update_review') : t('submit_review'); ?></button>
     </form>
 </section>
 
 <script>
 (function () {
-    const btns  = document.querySelectorAll('.r-btn');
-    const input = document.getElementById('scoreInput');
-    const label = document.getElementById('ratingLabel');
-    const MSG_SCORE = <?php echo json_encode(t('your_score')); ?>;
-    const MSG_PICK  = <?php echo json_encode(t('pick_first')); ?>;
-    let selected = 0;
+    const btns      = document.querySelectorAll('.r-btn');
+    const input     = document.getElementById('scoreInput');
+    const label     = document.getElementById('ratingLabel');
+    const action    = document.getElementById('reviewAction');
+    const reviewId  = document.getElementById('reviewId');
+    const formTitle = document.getElementById('reviewFormTitle');
+    const submitBtn = document.getElementById('reviewSubmitBtn');
+    const MSG_SCORE       = <?php echo json_encode(t('your_score')); ?>;
+    const MSG_PICK        = <?php echo json_encode(t('pick_first')); ?>;
+    const MSG_EDIT_TITLE  = <?php echo json_encode(t('edit_review_title')); ?>;
+    const MSG_WRITE_TITLE = <?php echo json_encode(t('write_review')); ?>;
+    const MSG_UPDATE      = <?php echo json_encode(t('update_review')); ?>;
+    const MSG_SUBMIT      = <?php echo json_encode(t('submit_review')); ?>;
+
+    let selected = <?php echo $userReview ? (int)$userReview['score'] : 0; ?>;
 
     function cls(v) { return v <= 3 ? 'low' : v <= 6 ? 'mid' : 'high'; }
     function hex(v) { return v <= 3 ? '#ef4444' : v <= 6 ? '#eab308' : '#22c55e'; }
@@ -269,14 +363,20 @@ require 'includes/header.php';
     function clearAll() {
         btns.forEach(b => b.classList.remove('low', 'mid', 'high', 'selected'));
     }
-    function applyUp(upTo) {
-        const c = cls(upTo);
-        btns.forEach(b => { if (+b.dataset.val <= upTo) b.classList.add(c); });
-    }
     function applySelected(val) {
         clearAll();
         const c = cls(val);
         btns.forEach(b => { if (+b.dataset.val <= val) b.classList.add(c, 'selected'); });
+    }
+    function applyUp(upTo) {
+        const c = cls(upTo);
+        btns.forEach(b => { if (+b.dataset.val <= upTo) b.classList.add(c); });
+    }
+
+    if (selected) {
+        applySelected(selected);
+        label.textContent = MSG_SCORE.replace('%d', selected);
+        label.style.color = hex(selected);
     }
 
     btns.forEach(btn => {
@@ -303,6 +403,30 @@ require 'includes/header.php';
             label.textContent = MSG_PICK;
             label.style.color = '#ef4444';
         }
+    });
+
+    // Edit button: pre-fill form from review card
+    document.querySelectorAll('.review-edit-btn').forEach(btn => {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            const id    = this.dataset.id;
+            const score = +this.dataset.score;
+            const text  = this.dataset.text;
+
+            action.value    = 'update_review';
+            reviewId.value  = id;
+            input.value     = score;
+            selected        = score;
+            applySelected(score);
+            label.textContent = MSG_SCORE.replace('%d', score);
+            label.style.color = hex(score);
+
+            document.querySelector('textarea[name="review_text"]').value = text;
+            formTitle.textContent = MSG_EDIT_TITLE;
+            submitBtn.textContent = MSG_UPDATE;
+
+            document.getElementById('write-review').scrollIntoView({ behavior: 'smooth' });
+        });
     });
 })();
 </script>

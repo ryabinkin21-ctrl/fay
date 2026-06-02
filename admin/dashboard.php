@@ -81,8 +81,12 @@ $reviews = $pdo->query("
                         <td><?php echo htmlspecialchars($movie['genre']); ?></td>
                         <td>★ <?php echo htmlspecialchars($movie['rating']); ?></td>
                         <td class="admin-buttons">
-                            <a class="edit-btn"   href="<?php echo $base; ?>/admin/edit_movie.php?id=<?php echo $movie['id']; ?>">Edit</a>
-                            <a class="delete-btn" href="<?php echo $base; ?>/admin/delete_movie.php?id=<?php echo $movie['id']; ?>" onclick="return confirm('Delete this movie and all its reviews?');">Delete</a>
+                            <a class="edit-btn" href="<?php echo $base; ?>/admin/edit_movie.php?id=<?php echo $movie['id']; ?>">Edit</a>
+                            <form method="POST" action="<?php echo $base; ?>/admin/delete_movie.php" style="display:inline" onsubmit="return confirm('Delete this movie and all its reviews?');">
+                                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                                <input type="hidden" name="id" value="<?php echo $movie['id']; ?>">
+                                <button type="submit" class="delete-btn">Delete</button>
+                            </form>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -133,9 +137,11 @@ $reviews = $pdo->query("
                             </td>
                             <td><?php echo $r['created_at']; ?></td>
                             <td class="admin-buttons">
-                                <a class="delete-btn"
-                                   href="<?php echo $base; ?>/admin/delete_review.php?id=<?php echo $r['id']; ?>"
-                                   onclick="return confirm('Delete this review?');">Delete</a>
+                                <form method="POST" action="<?php echo $base; ?>/admin/delete_review.php" style="display:inline" onsubmit="return confirm('Delete this review?');">
+                                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                                    <input type="hidden" name="id" value="<?php echo $r['id']; ?>">
+                                    <button type="submit" class="delete-btn">Delete</button>
+                                </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>

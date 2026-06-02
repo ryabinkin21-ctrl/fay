@@ -458,6 +458,23 @@ main  { flex: 1; }
 .review-item h4 {
     font-family: 'Space Grotesk', sans-serif;
     font-size: 14px; font-weight: 600; margin-bottom: 5px;
+    display: flex; align-items: center; gap: 8px;
+}
+.review-actions { display: flex; gap: 8px; margin-top: 8px; }
+.review-edit-btn, .review-delete-btn {
+    font-size: 11px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase;
+    padding: 6px 12px; border-radius: 99px; cursor: pointer;
+    background: transparent; text-decoration: none;
+    transition: opacity .2s;
+}
+.review-edit-btn  { background: rgba(124,58,237,.18); color: var(--violet); border: 1px solid rgba(124,58,237,.3); }
+.review-delete-btn { background: rgba(239,68,68,.15); color: #ef4444; border: 1px solid rgba(239,68,68,.25); }
+.review-edit-btn:hover, .review-delete-btn:hover { opacity: .75; }
+.rewatch-badge {
+    font-size: 10px; font-weight: 600; letter-spacing: .4px;
+    background: #2d2b4e; color: var(--violet);
+    border: 1px solid var(--violet);
+    border-radius: 4px; padding: 1px 6px;
 }
 .review-item p { font-size: 13px; color: var(--muted); line-height: 1.5; }
 .review-item small { display: block; margin-top: 6px; font-size: 11px; color: #3a3a55; }

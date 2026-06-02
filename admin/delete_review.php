@@ -1,15 +1,19 @@
 <?php
+
 require "../includes/admin_auth.php";
 require "../includes/db.php";
 
-if (!isset($_GET['id'])) {
+if ($_SERVER['REQUEST_METHOD'] !== 'POST'
+    || !isset($_POST['csrf_token'])
+    || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])
+    || !isset($_POST['id'])
+) {
     header("Location: dashboard.php");
     exit;
 }
 
-$id = (int)$_GET['id'];
+$id = (int)$_POST['id'];
 
-// Get movie_id before deleting so we can recalculate its rating
 $stmt = $pdo->prepare("SELECT movie_id FROM reviews WHERE id = ?");
 $stmt->execute([$id]);
 $row = $stmt->fetch();
@@ -19,8 +23,15 @@ if ($row) {
 
     $pdo->prepare("DELETE FROM reviews WHERE id = ?")->execute([$id]);
 
-    // Recalculate avg rating (set to NULL if no reviews left)
-    $avg = $pdo->prepare("SELECT AVG(score) AS a FROM reviews WHERE movie_id = ?");
+    $avg = $pdo->prepare("
+        SELECT AVG(r.score) AS a
+        FROM reviews r
+        INNER JOIN (
+            SELECT user_id, MAX(id) AS latest_id
+            FROM reviews WHERE movie_id = ?
+            GROUP BY user_id
+        ) t ON r.id = t.latest_id
+    ");
     $avg->execute([$movieId]);
     $newRating = $avg->fetch()['a'];
 

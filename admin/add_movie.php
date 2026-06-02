@@ -44,28 +44,35 @@ if ($tmdbMovie) {
 }
 
 if (!empty($_FILES["poster"]["name"])) {
-
-    $fileName = time() . "_" . basename($_FILES["poster"]["name"]);
-
-    $target = "../assets/uploads/" . $fileName;
-
-    move_uploaded_file($_FILES["poster"]["tmp_name"], $target);
-
-    $poster = "assets/uploads/" . $fileName;
-}
-    
-    if (empty($title) || empty($genre) || empty($director)) {
-        $message = "Please fill in the required fields.";
+    $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+    $ext = strtolower(pathinfo($_FILES["poster"]["name"], PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowed, true) || !getimagesize($_FILES["poster"]["tmp_name"])) {
+        $message = "Only JPG, PNG, WebP and GIF images are allowed.";
     } else {
-        $stmt = $pdo->prepare("
-            INSERT INTO movies (title, year, genre, director, description, poster, rating)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ");
+        $fileName = time() . "_" . basename($_FILES["poster"]["name"]);
+        $target = "../assets/uploads/" . $fileName;
+        if (move_uploaded_file($_FILES["poster"]["tmp_name"], $target)) {
+            $poster = "assets/uploads/" . $fileName;
+        } else {
+            $message = "Failed to save uploaded file.";
+        }
+    }
+}
 
-        $stmt->execute([$title, $year, $genre, $director, $description, $poster, $rating]);
+    if (empty($message)) {
+        if (empty($title) || empty($genre) || empty($director)) {
+            $message = "Please fill in the required fields.";
+        } else {
+            $stmt = $pdo->prepare("
+                INSERT INTO movies (title, year, genre, director, description, poster, rating)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ");
 
-        header("Location: dashboard.php");
-        exit;
+            $stmt->execute([$title, $year, $genre, $director, $description, $poster, $rating]);
+
+            header("Location: dashboard.php");
+            exit;
+        }
     }
 }
 ?>
