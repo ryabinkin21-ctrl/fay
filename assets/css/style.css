@@ -460,16 +460,20 @@ main  { flex: 1; }
     font-size: 14px; font-weight: 600; margin-bottom: 5px;
     display: flex; align-items: center; gap: 8px;
 }
-.review-actions { display: flex; gap: 8px; margin-top: 8px; }
+.review-actions { display: flex; gap: 6px; margin-top: 10px; }
 .review-edit-btn, .review-delete-btn {
-    font-size: 11px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase;
-    padding: 6px 12px; border-radius: 99px; cursor: pointer;
-    background: transparent; text-decoration: none;
-    transition: opacity .2s;
+    font-size: 11px; font-weight: 500; letter-spacing: .1px;
+    padding: 5px 14px; border-radius: 6px; cursor: pointer;
+    text-decoration: none; display: inline-flex; align-items: center;
+    background: #181830; color: #8888aa; border: 1px solid #252545;
+    transition: background .18s, color .18s, border-color .18s;
 }
-.review-edit-btn  { background: rgba(124,58,237,.18); color: var(--violet); border: 1px solid rgba(124,58,237,.3); }
-.review-delete-btn { background: rgba(239,68,68,.15); color: #ef4444; border: 1px solid rgba(239,68,68,.25); }
-.review-edit-btn:hover, .review-delete-btn:hover { opacity: .75; }
+.review-edit-btn:hover {
+    background: #21213f; color: #c0c0de; border-color: #333360;
+}
+.review-delete-btn:hover {
+    background: #241818; color: #b06060; border-color: #3a2020;
+}
 .rewatch-badge {
     font-size: 10px; font-weight: 600; letter-spacing: .4px;
     background: #2d2b4e; color: var(--violet);
