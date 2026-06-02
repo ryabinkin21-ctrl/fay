@@ -87,20 +87,30 @@ if (!empty($search)) {
     $totalPages = 1;
 } else {
     $target     = 20;
+    $skip       = ($page - 1) * $target;
     $movies     = [];
-    $fetchPage  = $page;
+    $seenIds    = [];
+    $fetchPage  = 1;
     $totalPages = 1;
+    $counted    = 0;
 
     while (count($movies) < $target) {
-        $data      = tmdbGetDiscover($tmdbSort, $fetchPage, $tmdbLangCode, $genre);
+        $data = tmdbGetDiscover($tmdbSort, $fetchPage, $tmdbLangCode, $genre);
+        if (!$data) break;
         $totalPages = min((int)($data['total_pages'] ?? 1), 500);
-        $filtered  = array_values(array_filter($data['results'] ?? [], $onlyCyrLat));
-        $movies    = array_merge($movies, $filtered);
-        if ($fetchPage >= $totalPages) break;
+        $filtered   = array_values(array_filter($data['results'] ?? [], $onlyCyrLat));
+
+        foreach ($filtered as $m) {
+            if (isset($seenIds[$m['id']])) continue;
+            $seenIds[$m['id']] = true;
+            if ($counted < $skip) { $counted++; continue; }
+            $movies[] = $m;
+            if (count($movies) >= $target) break;
+        }
+
+        if ($fetchPage >= $totalPages || count($movies) >= $target) break;
         $fetchPage++;
     }
-
-    $movies = array_slice($movies, 0, $target);
 }
 ?>
 
