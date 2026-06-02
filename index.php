@@ -59,7 +59,7 @@ if (isset($_SESSION['user_id'])) {
 $search  = trim($_GET['search'] ?? '');
 $sort    = $_GET['sort']    ?? 'popularity';
 $genre   = (int)($_GET['genre'] ?? 0);
-$page    = max(1, (int)($_GET['page'] ?? 1));
+$page    = max(1, min(100, (int)($_GET['page'] ?? 1)));
 
 $tmdbLangCode = tmdbLang($currentLang);
 
@@ -108,7 +108,7 @@ if (!empty($search)) {
             if (count($movies) >= $target) break;
         }
 
-        if ($fetchPage >= $totalPages || count($movies) >= $target) break;
+        if ($fetchPage >= $totalPages || count($movies) >= $target || $fetchPage >= $page + 15) break;
         $fetchPage++;
     }
 }
