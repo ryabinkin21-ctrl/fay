@@ -435,9 +435,9 @@ require 'includes/header.php';
 <section class="write-review">
     <h2><?php echo t('write_review'); ?></h2>
     <p style="color:var(--muted)">
-        <a href="<?php echo $base; ?>/login.php" style="color:var(--violet)"><?php echo t('login_link'); ?></a>
+        <a href="<?php echo $base; ?>/login.php" style="color:var(--gold)"><?php echo t('login_link'); ?></a>
         <?php echo t('or'); ?>
-        <a href="<?php echo $base; ?>/register.php" style="color:var(--violet)"><?php echo t('register_link'); ?></a>
+        <a href="<?php echo $base; ?>/register.php" style="color:var(--gold)"><?php echo t('register_link'); ?></a>
         <?php echo t('login_to_review'); ?>
     </p>
 </section>
