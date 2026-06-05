@@ -1,6 +1,6 @@
 <?php
 
-session_start();
+require __DIR__ . '/includes/session_init.php';
 
 $_SESSION = [];
 

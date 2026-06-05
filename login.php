@@ -1,5 +1,5 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) session_start();
+require __DIR__ . '/includes/session_init.php';
 require 'includes/db.php';
 require 'includes/lang.php';
 
