@@ -14,18 +14,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user = $stmt->fetch();
 
     if ($user && password_verify($password, $user['password'])) {
-        $_SESSION['user_id']  = $user['id'];
-        $_SESSION['username'] = $user['username'];
-        $_SESSION['role']     = $user['role'];
+        if (empty($user['email_verified'])) {
+            $message = t('register_err_not_verified');
+        } else {
+            $_SESSION['user_id']  = $user['id'];
+            $_SESSION['username'] = $user['username'];
+            $_SESSION['role']     = $user['role'];
 
-        if (!empty($user['lang']) && in_array($user['lang'], ['en','ru'], true)) {
-            $_SESSION['lang'] = $user['lang'];
-            setcookie('lang', $user['lang'], time() + 365 * 24 * 3600, '/');
+            if (!empty($user['lang']) && in_array($user['lang'], ['en','ru'], true)) {
+                $_SESSION['lang'] = $user['lang'];
+                setcookie('lang', $user['lang'], time() + 365 * 24 * 3600, '/');
+            }
+
+            $base = '';
+            header("Location: $base/index.php");
+            exit;
         }
-
-        $base = '';
-        header("Location: $base/index.php");
-        exit;
     } else {
         $message = t('login_invalid');
     }
@@ -53,6 +57,9 @@ require 'includes/header.php';
             <input type="password" name="password" placeholder="<?php echo htmlspecialchars(t('password_ph')); ?>">
             <button type="submit"><?php echo t('login_btn'); ?></button>
         </form>
+        <p style="margin-top:1rem;text-align:center">
+            <a href="forgot_password.php"><?php echo t('forgot_link'); ?></a>
+        </p>
     </div>
 </section>
 

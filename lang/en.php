@@ -99,6 +99,36 @@
     'feat_4'      => '&#10004; Movie Details',
     'feat_5'      => '&#10004; Admin Panel',
 
+    /* email verification */
+    'register_verify_sent'    => 'We sent a verification link to your email. Please check your inbox (and spam folder).',
+    'register_err_not_verified' => 'Please verify your email before logging in. Check your inbox.',
+    'verify_title'            => 'Email Verified',
+    'verify_success'          => 'Your email has been verified! You can now log in.',
+    'verify_err_invalid'      => 'This verification link is invalid or has expired.',
+    'verify_email_subject'    => 'Verify your email — Fay',
+    'verify_email_body'       => 'Click the link below to verify your email address:',
+    'verify_email_expire'     => 'The link expires in 24 hours.',
+
+    /* forgot / reset password */
+    'forgot_link'          => 'Forgot password?',
+    'forgot_title'         => 'Forgot Password',
+    'forgot_email_ph'      => 'Enter your email',
+    'forgot_btn'           => 'Send reset link',
+    'forgot_success'       => 'If this email is registered, you will receive a reset link shortly.',
+    'forgot_err_empty'     => 'Please enter your email.',
+    'forgot_email_subject' => 'Password Reset — Fay',
+    'forgot_email_body'    => 'Click the link below to reset your password:',
+    'forgot_email_expire'  => 'The link expires in 1 hour. If you did not request a reset, ignore this email.',
+    'reset_title'          => 'Set New Password',
+    'reset_new_ph'         => 'New password',
+    'reset_confirm_ph'     => 'Confirm new password',
+    'reset_btn'            => 'Set new password',
+    'reset_err_short'      => 'Password must be at least 6 characters.',
+    'reset_err_mismatch'   => 'Passwords do not match.',
+    'reset_err_invalid'    => 'This link is invalid or has expired.',
+    'reset_success'        => 'Password changed! You can now log in.',
+    'back_to_login'        => 'Back to login',
+
     /* lang toggle */
     'lang_btn'          => 'RU',
     'lang_switch_to'    => 'ru',

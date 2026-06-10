@@ -1,2 +1,5 @@
 .env
 includes/db.php
+vendor/
+composer.phar
+composer
