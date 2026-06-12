@@ -3,3 +3,4 @@ includes/db.php
 vendor/
 composer.phar
 composer
+tmp/sessions/

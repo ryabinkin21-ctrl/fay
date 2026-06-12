@@ -8,7 +8,8 @@ $tmdbLangCode = tmdbLang($currentLang);
 
 $stmt = $pdo->query("
     SELECT reviews.*, users.username,
-           movies.title AS movie_title, movies.poster, movies.id AS movie_id, movies.tmdb_id
+           movies.title AS movie_title, movies.poster, movies.id AS movie_id,
+           movies.tmdb_id, movies.media_type
     FROM reviews
     JOIN users  ON reviews.user_id  = users.id
     JOIN movies ON reviews.movie_id = movies.id
@@ -18,10 +19,18 @@ $reviews = $stmt->fetchAll();
 
 foreach ($reviews as &$review) {
     if (!empty($review['tmdb_id'])) {
-        $td = tmdbGetMovie((int)$review['tmdb_id'], $tmdbLangCode);
-        if ($td) {
-            if (!empty($td['title']))        $review['movie_title'] = $td['title'];
-            if (!empty($td['poster_path']))  $review['poster']      = 'https://image.tmdb.org/t/p/w300' . $td['poster_path'];
+        if (($review['media_type'] ?? 'movie') === 'tv') {
+            $td = tmdbGetTv((int)$review['tmdb_id'], $tmdbLangCode);
+            if ($td) {
+                if (!empty($td['name']))        $review['movie_title'] = $td['name'];
+                if (!empty($td['poster_path'])) $review['poster']      = 'https://image.tmdb.org/t/p/w300' . $td['poster_path'];
+            }
+        } else {
+            $td = tmdbGetMovie((int)$review['tmdb_id'], $tmdbLangCode);
+            if ($td) {
+                if (!empty($td['title']))       $review['movie_title'] = $td['title'];
+                if (!empty($td['poster_path'])) $review['poster']      = 'https://image.tmdb.org/t/p/w300' . $td['poster_path'];
+            }
         }
     }
 }
@@ -38,8 +47,9 @@ unset($review);
         <div class="all-reviews">
             <?php foreach ($reviews as $review): ?>
                 <?php
+                    $rvTypeQs = ($review['media_type'] ?? 'movie') === 'tv' ? '&type=tv' : '';
                     $movieUrl = $review['tmdb_id']
-                        ? $base . '/movie.php?tmdb_id=' . (int)$review['tmdb_id']
+                        ? $base . '/movie.php?tmdb_id=' . (int)$review['tmdb_id'] . $rvTypeQs
                         : $base . '/movie.php?id='      . (int)$review['movie_id'];
                 ?>
                 <div class="global-review-card compact">

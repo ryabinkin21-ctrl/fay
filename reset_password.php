@@ -2,6 +2,7 @@
 require __DIR__ . '/includes/session_init.php';
 require 'includes/db.php';
 require 'includes/lang.php';
+require 'includes/mailer.php';
 
 $token   = trim($_GET['token'] ?? '');
 $message = '';
@@ -34,6 +35,19 @@ if (!empty($token)) {
                 $hashed = password_hash($password, PASSWORD_DEFAULT);
                 $pdo->prepare("UPDATE users SET password = ? WHERE id = ?")->execute([$hashed, $reset['user_id']]);
                 $pdo->prepare("UPDATE password_resets SET used = 1 WHERE id = ?")->execute([$reset['id']]);
+
+                $uRow = $pdo->prepare("SELECT email, username FROM users WHERE id = ?");
+                $uRow->execute([$reset['user_id']]);
+                $uData = $uRow->fetch();
+                if ($uData) {
+                    sendMail(
+                        $uData['email'],
+                        $uData['username'],
+                        t('reset_done_subject'),
+                        t('reset_done_body')
+                    );
+                }
+
                 $success = true;
                 $valid   = false;
             }
@@ -61,7 +75,7 @@ require 'includes/header.php';
             <?php if ($message): ?>
                 <p class="message"><?php echo htmlspecialchars($message); ?></p>
             <?php endif; ?>
-            <form method="POST" action="reset_password.php?token=<?php echo urlencode($token); ?>">
+            <form method="POST" action="?token=<?php echo urlencode($token); ?>">
                 <input type="password" name="password"
                        placeholder="<?php echo htmlspecialchars(t('reset_new_ph')); ?>">
                 <input type="password" name="confirm"

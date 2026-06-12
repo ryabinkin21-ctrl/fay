@@ -31,7 +31,9 @@ require_once __DIR__ . '/lang.php';   // defines t(), $currentLang
     <?php if (empty($auth_page)): ?>
     <nav class="nav">
         <a href="<?php echo $base; ?>/index.php"><?php echo t('nav_movies'); ?></a>
+        <a href="<?php echo $base; ?>/series.php"><?php echo t('nav_series'); ?></a>
         <a href="<?php echo $base; ?>/reviews.php"><?php echo t('nav_reviews'); ?></a>
+        <a href="<?php echo $base; ?>/chatbot.php"><?php echo t('nav_chat'); ?></a>
         <a href="#" id="openAbout"><?php echo t('nav_about'); ?></a>
     </nav>
     <?php endif; ?>

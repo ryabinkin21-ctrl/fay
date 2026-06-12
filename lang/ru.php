@@ -1,13 +1,32 @@
 <?php return [
     /* nav */
     'nav_movies'        => 'Фильмы',
+    'nav_series'        => 'Сериалы',
     'nav_reviews'       => 'Отзывы',
+    'nav_chat'          => 'AI Рекомендации',
     'nav_about'         => 'О сайте',
     'nav_profile'       => 'Профиль',
     'nav_admin'         => 'Админ',
     'nav_logout'        => 'Выйти',
     'nav_login'         => 'Войти',
     'nav_register'      => 'Регистрация',
+    /* series */
+    'series_hero_tag'   => 'FAY · СЕРИАЛЫ',
+    'series_hero_h1a'   => 'Сериалы,',
+    'series_hero_h1b'   => 'которые затягивают',
+    'series_hero_sub'   => 'Отслеживайте и оценивайте любимые шоу — сезон за сезоном.',
+    'series_heading'    => 'Популярные сериалы',
+    'search_series_ph'  => 'Поиск сериалов…',
+    'no_series'         => 'Сериалы не найдены.',
+    'kind_movie'        => 'Фильм',
+    'kind_tv'           => 'Сериал',
+    /* chatbot */
+    'chat_title'           => 'AI рекомендации фильмов',
+    'chat_subtitle'        => 'Персональные подборки на основе ваших оценок',
+    'chat_greeting'        => 'Привет! Расскажите, что хотите посмотреть, и я подберу фильмы по вашим оценкам.',
+    'chat_placeholder'     => 'Спросите рекомендацию…',
+    'chat_send'            => 'Отправить',
+    'chat_login_required'  => 'Войдите чтобы использовать чатбот',
     /* hero */
     'hero_tagline'      => 'Открывай &nbsp;&middot;&nbsp; Выбирай &nbsp;&middot;&nbsp; Оценивай',
     'hero_h1a'          => 'Найди фильмы,',
@@ -129,6 +148,8 @@
     'reset_err_invalid'    => 'Ссылка недействительна или срок её действия истёк.',
     'reset_success'        => 'Пароль изменён! Теперь вы можете войти.',
     'back_to_login'        => 'Вернуться ко входу',
+    'reset_done_subject'   => 'Ваш пароль изменён — Fay',
+    'reset_done_body'      => "Пароль от вашего аккаунта Fay был успешно изменён.\n\nЕсли это были не вы — немедленно сбросьте пароль через страницу входа.",
 
     /* lang toggle */
     'lang_btn'          => 'EN',

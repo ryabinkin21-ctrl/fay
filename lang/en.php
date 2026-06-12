@@ -1,13 +1,32 @@
 <?php return [
     /* nav */
     'nav_movies'        => 'Movies',
+    'nav_series'        => 'Series',
     'nav_reviews'       => 'Reviews',
+    'nav_chat'          => 'AI Recommend',
     'nav_about'         => 'About',
     'nav_profile'       => 'Profile',
     'nav_admin'         => 'Admin',
     'nav_logout'        => 'Logout',
     'nav_login'         => 'Login',
     'nav_register'      => 'Register',
+    /* series */
+    'series_hero_tag'   => 'FAY · SERIES',
+    'series_hero_h1a'   => 'Binge-worthy',
+    'series_hero_h1b'   => 'series',
+    'series_hero_sub'   => 'Track and review the shows you love, season after season.',
+    'series_heading'    => 'Popular Series',
+    'search_series_ph'  => 'Search series…',
+    'no_series'         => 'No series found.',
+    'kind_movie'        => 'Movie',
+    'kind_tv'           => 'Series',
+    /* chatbot */
+    'chat_title'           => 'AI Movie Recommendations',
+    'chat_subtitle'        => 'Personalised picks based on your ratings',
+    'chat_greeting'        => 'Hi! Tell me what you feel like watching, and I\'ll suggest films based on your ratings.',
+    'chat_placeholder'     => 'Ask for a recommendation…',
+    'chat_send'            => 'Send',
+    'chat_login_required'  => 'Log in to use the chatbot',
     /* hero */
     'hero_tagline'      => 'Discover &nbsp;&middot;&nbsp; Choose &nbsp;&middot;&nbsp; Review',
     'hero_h1a'          => 'Find films',
@@ -128,6 +147,8 @@
     'reset_err_invalid'    => 'This link is invalid or has expired.',
     'reset_success'        => 'Password changed! You can now log in.',
     'back_to_login'        => 'Back to login',
+    'reset_done_subject'   => 'Your password has been changed — Fay',
+    'reset_done_body'      => "Your Fay account password was successfully changed.\n\nIf you did not make this change, reset your password immediately via the login page.",
 
     /* lang toggle */
     'lang_btn'          => 'RU',

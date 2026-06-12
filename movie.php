@@ -6,6 +6,9 @@ require 'includes/tmdb.php';
 
 $message = '';
 $mode    = 'local';
+// content type: 'movie' (default) or 'tv' — TMDB serves these under different paths
+$mediaType = (($_GET['type'] ?? '') === 'tv') ? 'tv' : 'movie';
+$isTv      = $mediaType === 'tv';
 
 if (isset($_GET['tmdb_id'])) {
     $mode   = 'tmdb';
@@ -13,26 +16,45 @@ if (isset($_GET['tmdb_id'])) {
     if (!$tmdbId) die('Movie not found');
 
     $tmdbLangCode = tmdbLang($currentLang);
-    $tmdbData     = tmdbGetMovie($tmdbId, $tmdbLangCode);
-    if (!$tmdbData) die('Movie not found');
 
-    $movie = [
-        'tmdb_id'     => $tmdbId,
-        'id'          => null,
-        'title'       => $tmdbData['title'],
-        'year'        => !empty($tmdbData['release_date']) ? substr($tmdbData['release_date'], 0, 4) : '',
-        'genre'       => tmdbGenresString($tmdbData),
-        'director'    => tmdbDirector($tmdbData),
-        'description' => $tmdbData['overview'] ?? '',
-        'poster'      => !empty($tmdbData['poster_path'])
-                            ? 'https://image.tmdb.org/t/p/w500' . $tmdbData['poster_path']
-                            : '',
-        'rating'      => null,
-        'tmdb_vote'   => number_format((float)($tmdbData['vote_average'] ?? 0), 1),
-    ];
+    if ($isTv) {
+        $tmdbData = tmdbGetTv($tmdbId, $tmdbLangCode);
+        if (!$tmdbData) die('Movie not found');
+        $movie = [
+            'tmdb_id'     => $tmdbId,
+            'id'          => null,
+            'title'       => $tmdbData['name'] ?? '',
+            'year'        => !empty($tmdbData['first_air_date']) ? substr($tmdbData['first_air_date'], 0, 4) : '',
+            'genre'       => tmdbGenresString($tmdbData),
+            'director'    => tmdbTvCreators($tmdbData),
+            'description' => $tmdbData['overview'] ?? '',
+            'poster'      => !empty($tmdbData['poster_path'])
+                                ? 'https://image.tmdb.org/t/p/w500' . $tmdbData['poster_path']
+                                : '',
+            'rating'      => null,
+            'tmdb_vote'   => number_format((float)($tmdbData['vote_average'] ?? 0), 1),
+        ];
+    } else {
+        $tmdbData = tmdbGetMovie($tmdbId, $tmdbLangCode);
+        if (!$tmdbData) die('Movie not found');
+        $movie = [
+            'tmdb_id'     => $tmdbId,
+            'id'          => null,
+            'title'       => $tmdbData['title'],
+            'year'        => !empty($tmdbData['release_date']) ? substr($tmdbData['release_date'], 0, 4) : '',
+            'genre'       => tmdbGenresString($tmdbData),
+            'director'    => tmdbDirector($tmdbData),
+            'description' => $tmdbData['overview'] ?? '',
+            'poster'      => !empty($tmdbData['poster_path'])
+                                ? 'https://image.tmdb.org/t/p/w500' . $tmdbData['poster_path']
+                                : '',
+            'rating'      => null,
+            'tmdb_vote'   => number_format((float)($tmdbData['vote_average'] ?? 0), 1),
+        ];
+    }
 
-    $localStmt  = $pdo->prepare("SELECT * FROM movies WHERE tmdb_id = ?");
-    $localStmt->execute([$tmdbId]);
+    $localStmt  = $pdo->prepare("SELECT * FROM movies WHERE tmdb_id = ? AND media_type = ?");
+    $localStmt->execute([$tmdbId, $mediaType]);
     $localMovie   = $localStmt->fetch();
     $localMovieId = $localMovie ? (int)$localMovie['id'] : null;
     if ($localMovie) $movie['rating'] = $localMovie['rating'];
@@ -46,15 +68,21 @@ if (isset($_GET['tmdb_id'])) {
     if (!$movie) die('Movie not found');
     $movie        = (array)$movie;
     $localMovieId = (int)$movie['id'];
+    // the stored row knows its own type — keep links/queries consistent
+    $mediaType = ($movie['media_type'] ?? 'movie') === 'tv' ? 'tv' : 'movie';
+    $isTv      = $mediaType === 'tv';
 } else {
     die('Movie not found');
 }
+
+// querystring fragment that preserves the content type on redirects/links
+$typeQs = $isTv ? '&type=tv' : '';
 
 // POST: submit / update / delete review
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SESSION['user_id'])) {
     $user_id  = (int)$_SESSION['user_id'];
     $action   = $_POST['action'] ?? 'submit';
-    $location = $mode === 'tmdb' ? "movie.php?tmdb_id={$tmdbId}" : "movie.php?id={$localMovieId}";
+    $location = $mode === 'tmdb' ? "movie.php?tmdb_id={$tmdbId}{$typeQs}" : "movie.php?id={$localMovieId}";
 
     if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
         header("Location: $location");
@@ -89,18 +117,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SESSION['user_id'])) {
     if ($score < 1 || $score > 10) {
         $message = t('pick_first');
     } else {
-        // For TMDB movies: auto-create local record on first review
+        // For TMDB titles: auto-create local record on first review
         if ($mode === 'tmdb' && !$localMovieId) {
-            $enData = tmdbGetMovie($tmdbId, 'en-US');
+            if ($isTv) {
+                $enData     = tmdbGetTv($tmdbId, 'en-US');
+                $enTitle    = $enData['name'] ?? $movie['title'];
+                $enDirector = tmdbTvCreators($enData ?? $tmdbData);
+            } else {
+                $enData     = tmdbGetMovie($tmdbId, 'en-US');
+                $enTitle    = $enData['title'] ?? $movie['title'];
+                $enDirector = tmdbDirector($enData ?? $tmdbData);
+            }
             $pdo->prepare("
-                INSERT INTO movies (tmdb_id, title, year, genre, director, description, poster)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO movies (tmdb_id, media_type, title, year, genre, director, description, poster)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ")->execute([
                 $tmdbId,
-                $enData['title']    ?? $movie['title'],
+                $mediaType,
+                $enTitle,
                 $movie['year'],
                 tmdbGenresString($enData ?? $tmdbData),
-                tmdbDirector($enData ?? $tmdbData),
+                $enDirector,
                 $enData['overview'] ?? $movie['description'],
                 $movie['poster'],
             ]);
@@ -142,8 +179,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SESSION['user_id'])) {
 $inWishlist = false;
 $wTmdbId    = $mode === 'tmdb' ? $tmdbId : (int)($movie['tmdb_id'] ?? 0);
 if (isset($_SESSION['user_id']) && $wTmdbId) {
-    $wCheck = $pdo->prepare("SELECT id FROM wishlist WHERE user_id = ? AND tmdb_id = ?");
-    $wCheck->execute([(int)$_SESSION['user_id'], $wTmdbId]);
+    $wCheck = $pdo->prepare("SELECT id FROM wishlist WHERE user_id = ? AND tmdb_id = ? AND media_type = ?");
+    $wCheck->execute([(int)$_SESSION['user_id'], $wTmdbId, $mediaType]);
     $inWishlist = (bool)$wCheck->fetch();
 }
 
@@ -156,7 +193,7 @@ if ($mode === 'tmdb') {
     $trailerTmdbId = (int)$movie['tmdb_id'];
 }
 if ($trailerTmdbId) {
-    $trailerKey = tmdbGetTrailer($trailerTmdbId);
+    $trailerKey = $isTv ? tmdbGetTvTrailer($trailerTmdbId) : tmdbGetTrailer($trailerTmdbId);
 }
 
 // Fetch reviews from local DB
@@ -190,7 +227,11 @@ require 'includes/header.php';
 <section class="movie-detail">
     <div class="breadcrumbs">
         <a href="<?php echo $base; ?>/index.php"><?php echo t('home'); ?></a> ›
-        <a href="<?php echo $base; ?>/index.php"><?php echo t('nav_movies'); ?></a> ›
+        <?php if ($isTv): ?>
+            <a href="<?php echo $base; ?>/series.php"><?php echo t('nav_series'); ?></a> ›
+        <?php else: ?>
+            <a href="<?php echo $base; ?>/index.php"><?php echo t('nav_movies'); ?></a> ›
+        <?php endif; ?>
         <?php echo htmlspecialchars($movie['title']); ?>
     </div>
 
@@ -205,6 +246,7 @@ require 'includes/header.php';
             <button class="wish-btn<?php echo $inWishlist ? ' active' : ''; ?>"
                 id="wishBtn"
                 data-tmdb="<?php echo $wTmdbId; ?>"
+                data-type="<?php echo $mediaType; ?>"
                 data-title="<?php echo htmlspecialchars($movie['title'], ENT_QUOTES); ?>"
                 data-poster="<?php echo htmlspecialchars($movie['poster'] ?? '', ENT_QUOTES); ?>"
                 data-year="<?php echo htmlspecialchars($movie['year'] ?? '', ENT_QUOTES); ?>"
@@ -453,10 +495,11 @@ require 'includes/header.php';
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: new URLSearchParams({
-                tmdb_id: btn.dataset.tmdb,
-                title:   btn.dataset.title,
-                poster:  btn.dataset.poster,
-                year:    btn.dataset.year
+                tmdb_id:    btn.dataset.tmdb,
+                media_type: btn.dataset.type,
+                title:      btn.dataset.title,
+                poster:     btn.dataset.poster,
+                year:       btn.dataset.year
             })
         })
         .then(r => r.json())

@@ -4,99 +4,84 @@ require 'includes/db.php';
 require 'includes/tmdb.php';
 require 'includes/header.php';
 
-// ── Carousel: top-20 popular, excluding already-reviewed by current user ──────
-$carouselMovies = [];
-{
-    $tmdbLangCodeCarousel = tmdbLang($currentLang);
-    $popularFilter = fn($m) => !empty($m['poster_path']) && tmdbHasLatinOrCyrillic($m) && ($m['vote_average'] ?? 0) > 0;
-    $data = tmdbGetDiscover('popularity.desc', 1, $tmdbLangCodeCarousel, 0);
-    $allPopular = array_values(array_filter($data['results'] ?? [], $popularFilter));
-
-    $reviewedTmdbIds = [];
-    if (isset($_SESSION['user_id'])) {
-        $rStmt = $pdo->prepare("
-            SELECT m.tmdb_id FROM reviews r
-            JOIN movies m ON r.movie_id = m.id
-            WHERE r.user_id = ? AND m.tmdb_id IS NOT NULL AND m.media_type = 'movie'
-        ");
-        $rStmt->execute([$_SESSION['user_id']]);
-        $reviewedTmdbIds = array_column($rStmt->fetchAll(), 'tmdb_id');
-    }
-
-    foreach ($allPopular as $m) {
-        if (in_array($m['id'], $reviewedTmdbIds)) continue;
-        $carouselMovies[] = $m;
-        if (count($carouselMovies) >= 20) break;
-    }
-    // if not enough after filtering, fetch more pages
-    if (count($carouselMovies) < 10) {
-        $data2 = tmdbGetDiscover('popularity.desc', 2, $tmdbLangCodeCarousel, 0);
-        foreach (array_values(array_filter($data2['results'] ?? [], $popularFilter)) as $m) {
-            if (in_array($m['id'], $reviewedTmdbIds)) continue;
-            $carouselMovies[] = $m;
-            if (count($carouselMovies) >= 20) break;
-        }
-    }
-}
-
-// Создать таблицу если не существует
-$pdo->exec("CREATE TABLE IF NOT EXISTS wishlist (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL, tmdb_id INT NOT NULL,
-    media_type VARCHAR(10) NOT NULL DEFAULT 'movie',
-    title VARCHAR(255) NOT NULL DEFAULT '', poster VARCHAR(500) NOT NULL DEFAULT '',
-    year VARCHAR(4) NOT NULL DEFAULT '', added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_user_media (user_id, tmdb_id, media_type)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-// Загрузить wishlist текущего пользователя
+// Load current user's TV wishlist (scoped to series so movie ids don't collide)
 $userWishlist = [];
 if (isset($_SESSION['user_id'])) {
-    $ws = $pdo->prepare("SELECT tmdb_id FROM wishlist WHERE user_id = ? AND media_type = 'movie'");
+    $ws = $pdo->prepare("SELECT tmdb_id FROM wishlist WHERE user_id = ? AND media_type = 'tv'");
     $ws->execute([$_SESSION['user_id']]);
     $userWishlist = array_column($ws->fetchAll(), 'tmdb_id');
 }
 
-$search  = trim($_GET['search'] ?? '');
-$sort    = $_GET['sort']    ?? 'popularity';
-$genre   = (int)($_GET['genre'] ?? 0);
-$page    = max(1, min(100, (int)($_GET['page'] ?? 1)));
+// ── Carousel: top popular series, excluding ones the user already reviewed ──
+$carouselSeries = [];
+{
+    $carLang = tmdbLang($currentLang);
+    $carFilter = fn($m) =>
+        !empty($m['poster_path'])
+        && ($m['vote_average'] ?? 0) > 0
+        && tmdbHasLatinOrCyrillic(['original_language' => $m['original_language'] ?? '', 'title' => $m['name'] ?? '']);
+
+    $reviewedTvIds = [];
+    if (isset($_SESSION['user_id'])) {
+        $rStmt = $pdo->prepare("
+            SELECT m.tmdb_id FROM reviews r
+            JOIN movies m ON r.movie_id = m.id
+            WHERE r.user_id = ? AND m.tmdb_id IS NOT NULL AND m.media_type = 'tv'
+        ");
+        $rStmt->execute([$_SESSION['user_id']]);
+        $reviewedTvIds = array_column($rStmt->fetchAll(), 'tmdb_id');
+    }
+
+    for ($cp = 1; $cp <= 2 && count($carouselSeries) < 20; $cp++) {
+        $cData = tmdbGetDiscoverTv('popularity.desc', $cp, $carLang, 0);
+        foreach (array_values(array_filter($cData['results'] ?? [], $carFilter)) as $m) {
+            if (in_array($m['id'], $reviewedTvIds)) continue;
+            $carouselSeries[] = $m;
+            if (count($carouselSeries) >= 20) break;
+        }
+    }
+}
+
+$search = trim($_GET['search'] ?? '');
+$sort   = $_GET['sort']  ?? 'popularity';
+$genre  = (int)($_GET['genre'] ?? 0);
+$page   = max(1, min(100, (int)($_GET['page'] ?? 1)));
 
 $tmdbLangCode = tmdbLang($currentLang);
 
+// TMDB /discover/tv sort fields differ from movies
 $sortMap = [
     'popularity' => 'popularity.desc',
     'rating'     => 'vote_average.desc',
-    'year'        => 'primary_release_date.desc',
-    'title'      => 'original_title.asc',
+    'year'       => 'first_air_date.desc',
 ];
 $tmdbSort = $sortMap[$sort] ?? 'popularity.desc';
 
-// Жанры с кешем
-$genresMap = tmdbGetGenresMap($tmdbLangCode);
+$genresMap = tmdbGetTvGenresMap($tmdbLangCode);
 
+// keep only series with a poster, a score, and a Latin/Cyrillic title
 $onlyCyrLat = fn($m) =>
     !empty($m['poster_path'])
-    && tmdbHasLatinOrCyrillic($m)
-    && ($m['vote_average'] ?? 0) > 0;
+    && ($m['vote_average'] ?? 0) > 0
+    && tmdbHasLatinOrCyrillic(['original_language' => $m['original_language'] ?? '', 'title' => $m['name'] ?? '']);
 
 if (!empty($search)) {
-    $movies = array_values(array_filter(
-        tmdbSearchFuzzy($search, $page, $tmdbLangCode),
+    $items = array_values(array_filter(
+        tmdbSearchTvFuzzy($search, $page, $tmdbLangCode),
         fn($m) => $onlyCyrLat($m) && (!$genre || in_array($genre, $m['genre_ids'] ?? []))
     ));
     $totalPages = 1;
 } else {
     $target     = 20;
     $skip       = ($page - 1) * $target;
-    $movies     = [];
+    $items      = [];
     $seenIds    = [];
     $fetchPage  = 1;
     $totalPages = 1;
     $counted    = 0;
 
-    while (count($movies) < $target) {
-        $data = tmdbGetDiscover($tmdbSort, $fetchPage, $tmdbLangCode, $genre);
+    while (count($items) < $target) {
+        $data = tmdbGetDiscoverTv($tmdbSort, $fetchPage, $tmdbLangCode, $genre);
         if (!$data) break;
         $totalPages = min((int)($data['total_pages'] ?? 1), 500);
         $filtered   = array_values(array_filter($data['results'] ?? [], $onlyCyrLat));
@@ -105,32 +90,32 @@ if (!empty($search)) {
             if (isset($seenIds[$m['id']])) continue;
             $seenIds[$m['id']] = true;
             if ($counted < $skip) { $counted++; continue; }
-            $movies[] = $m;
-            if (count($movies) >= $target) break;
+            $items[] = $m;
+            if (count($items) >= $target) break;
         }
 
-        if ($fetchPage >= $totalPages || count($movies) >= $target || $fetchPage >= $page + 15) break;
+        if ($fetchPage >= $totalPages || count($items) >= $target || $fetchPage >= $page + 15) break;
         $fetchPage++;
     }
 }
 ?>
 
+<?php if (!empty($carouselSeries)): ?>
 <section class="hero">
     <div class="hero-content">
-        <p><?php echo tr('hero_tagline'); ?></p>
-        <h1><?php echo t('hero_h1a'); ?><br><span><?php echo t('hero_h1b'); ?></span></h1>
-        <span><?php echo tr('hero_sub'); ?></span>
+        <p><?php echo tr('series_hero_tag'); ?></p>
+        <h1><?php echo t('series_hero_h1a'); ?><br><span><?php echo t('series_hero_h1b'); ?></span></h1>
+        <span><?php echo tr('series_hero_sub'); ?></span>
     </div>
 
-    <?php if (!empty($carouselMovies)): ?>
     <div class="hero-carousel" id="heroCarousel">
         <div class="hc-stage" id="hcStage">
-            <?php foreach ($carouselMovies as $cm): ?>
+            <?php foreach ($carouselSeries as $cm): ?>
                 <?php
                     $cmPoster = 'https://image.tmdb.org/t/p/w300' . $cm['poster_path'];
-                    $cmTitle  = htmlspecialchars($cm['title']);
+                    $cmTitle  = htmlspecialchars($cm['name'] ?? '');
                     $cmRating = number_format((float)($cm['vote_average'] ?? 0), 1);
-                    $cmUrl    = $base . '/movie.php?tmdb_id=' . (int)$cm['id'];
+                    $cmUrl    = $base . '/movie.php?tmdb_id=' . (int)$cm['id'] . '&type=tv';
                 ?>
                 <a class="hc-card" href="<?php echo $cmUrl; ?>" data-title="<?php echo $cmTitle; ?>">
                     <img src="<?php echo htmlspecialchars($cmPoster); ?>" alt="<?php echo $cmTitle; ?>" loading="lazy">
@@ -142,13 +127,13 @@ if (!empty($search)) {
             <?php endforeach; ?>
         </div>
     </div>
-    <?php endif; ?>
 </section>
+<?php endif; ?>
 
-<section id="movies" class="section">
+<section id="series" class="section">
 
     <div class="section-title">
-        <h2><?php echo t('now_playing'); ?></h2>
+        <h2><?php echo t('series_heading'); ?></h2>
         <div></div>
     </div>
 
@@ -158,7 +143,7 @@ if (!empty($search)) {
                 id="searchInput"
                 type="text"
                 name="search"
-                placeholder="<?php echo htmlspecialchars(t('search_ph')); ?>"
+                placeholder="<?php echo htmlspecialchars(t('search_series_ph')); ?>"
                 value="<?php echo htmlspecialchars($search); ?>"
             >
             <div class="suggest-list" id="suggestList"></div>
@@ -175,44 +160,42 @@ if (!empty($search)) {
             <option value="popularity" <?php if ($sort === 'popularity') echo 'selected'; ?>><?php echo t('sort_popular'); ?></option>
             <option value="rating"     <?php if ($sort === 'rating')     echo 'selected'; ?>><?php echo t('sort_rating');  ?></option>
             <option value="year"       <?php if ($sort === 'year')       echo 'selected'; ?>><?php echo t('sort_year');    ?></option>
-            <option value="title"      <?php if ($sort === 'title')      echo 'selected'; ?>><?php echo t('sort_title');   ?></option>
         </select>
         <button type="submit"><?php echo t('search_btn'); ?></button>
     </form>
 
     <div class="movie-grid">
-        <?php if (!empty($movies)): ?>
-            <?php foreach ($movies as $m): ?>
+        <?php if (!empty($items)): ?>
+            <?php foreach ($items as $m): ?>
                 <?php
                     $poster = !empty($m['poster_path'])
                         ? 'https://image.tmdb.org/t/p/w300' . $m['poster_path']
                         : '';
-                    $year   = !empty($m['release_date']) ? substr($m['release_date'], 0, 4) : '';
+                    $year   = !empty($m['first_air_date']) ? substr($m['first_air_date'], 0, 4) : '';
                     $rating = number_format((float)($m['vote_average'] ?? 0), 1);
-                ?>
-                <?php
-                    $inWish   = in_array($m['id'], $userWishlist);
-                    $wishClass = $inWish ? ' active' : '';
+                    $title  = $m['name'] ?? '';
+                    $inWish = in_array($m['id'], $userWishlist);
                 ?>
                 <div class="movie-card">
                     <?php if (isset($_SESSION['user_id'])): ?>
-                    <button class="wish-btn<?php echo $wishClass; ?>"
+                    <button class="wish-btn<?php echo $inWish ? ' active' : ''; ?>"
                         data-tmdb="<?php echo (int)$m['id']; ?>"
-                        data-title="<?php echo htmlspecialchars($m['title'], ENT_QUOTES); ?>"
+                        data-type="tv"
+                        data-title="<?php echo htmlspecialchars($title, ENT_QUOTES); ?>"
                         data-poster="<?php echo htmlspecialchars($poster, ENT_QUOTES); ?>"
                         data-year="<?php echo htmlspecialchars($year, ENT_QUOTES); ?>"
                         title="<?php echo $inWish ? t('wishlist_added') : t('wishlist_add'); ?>">
                         <?php echo $inWish ? '★' : '☆'; ?>
                     </button>
                     <?php endif; ?>
-                    <a href="<?php echo $base; ?>/movie.php?tmdb_id=<?php echo (int)$m['id']; ?>">
+                    <a href="<?php echo $base; ?>/movie.php?tmdb_id=<?php echo (int)$m['id']; ?>&type=tv">
                         <?php if ($poster): ?>
                             <img src="<?php echo htmlspecialchars($poster); ?>" alt="Poster">
                         <?php else: ?>
                             <div class="poster-placeholder">No Poster</div>
                         <?php endif; ?>
                         <div class="movie-info">
-                            <h3><?php echo htmlspecialchars($m['title']); ?></h3>
+                            <h3><?php echo htmlspecialchars($title); ?></h3>
                             <div class="movie-meta">
                                 <span><?php echo htmlspecialchars($year); ?></span>
                                 <span>&#9733; <?php echo $rating; ?></span>
@@ -222,7 +205,7 @@ if (!empty($search)) {
                 </div>
             <?php endforeach; ?>
         <?php else: ?>
-            <p><?php echo t('no_movies'); ?></p>
+            <p><?php echo t('no_series'); ?></p>
         <?php endif; ?>
     </div>
 
@@ -271,7 +254,7 @@ if (!empty($search)) {
         if (q === lastQ) return;
         lastQ = q;
         if (q.length < 2) { close(); return; }
-        timer = setTimeout(() => fetch(q), 300);
+        timer = setTimeout(() => fetchSuggest(q), 300);
     });
 
     input.addEventListener('focus', function () {
@@ -284,8 +267,8 @@ if (!empty($search)) {
 
     function close() { list.classList.remove('open'); }
 
-    function fetch(q) {
-        window.fetch(base + '/search_suggest.php?q=' + encodeURIComponent(q))
+    function fetchSuggest(q) {
+        window.fetch(base + '/search_suggest.php?type=tv&q=' + encodeURIComponent(q))
             .then(r => r.json())
             .then(data => {
                 if (!data.length) { close(); list.innerHTML = ''; return; }
@@ -303,7 +286,7 @@ if (!empty($search)) {
                 list.classList.add('open');
                 list.querySelectorAll('.suggest-item').forEach(item => {
                     item.addEventListener('click', function () {
-                        window.location.href = base + '/movie.php?tmdb_id=' + this.dataset.id;
+                        window.location.href = base + '/movie.php?tmdb_id=' + this.dataset.id + '&type=tv';
                     });
                 });
             })
@@ -326,10 +309,11 @@ document.querySelectorAll('.wish-btn').forEach(btn => {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: new URLSearchParams({
-                tmdb_id: b.dataset.tmdb,
-                title:   b.dataset.title,
-                poster:  b.dataset.poster,
-                year:    b.dataset.year
+                tmdb_id:    b.dataset.tmdb,
+                media_type: b.dataset.type,
+                title:      b.dataset.title,
+                poster:     b.dataset.poster,
+                year:       b.dataset.year
             })
         })
         .then(r => r.json())
@@ -347,7 +331,7 @@ document.querySelectorAll('.wish-btn').forEach(btn => {
 </script>
 <?php endif; ?>
 
-<?php if (!empty($carouselMovies)): ?>
+<?php if (!empty($carouselSeries)): ?>
 <script src="<?php echo $base; ?>/assets/js/carousel.js" defer></script>
 <?php endif; ?>
 

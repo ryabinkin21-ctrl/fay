@@ -7,7 +7,8 @@ require 'includes/header.php';
 $tmdbLangCode = tmdbLang($currentLang);
 
 $stmt = $pdo->prepare("
-    SELECT reviews.*, movies.title, movies.year, movies.genre, movies.poster, movies.rating, movies.tmdb_id
+    SELECT reviews.*, movies.title, movies.year, movies.genre, movies.poster, movies.rating,
+           movies.tmdb_id, movies.media_type
     FROM reviews JOIN movies ON reviews.movie_id = movies.id
     WHERE reviews.user_id = ?
     ORDER BY reviews.created_at DESC
@@ -17,10 +18,18 @@ $userReviews = $stmt->fetchAll();
 
 foreach ($userReviews as &$item) {
     if (!empty($item['tmdb_id'])) {
-        $td = tmdbGetMovie((int)$item['tmdb_id'], $tmdbLangCode);
-        if ($td) {
-            if (!empty($td['title']))        $item['title']  = $td['title'];
-            if (!empty($td['poster_path']))  $item['poster'] = 'https://image.tmdb.org/t/p/w300' . $td['poster_path'];
+        if (($item['media_type'] ?? 'movie') === 'tv') {
+            $td = tmdbGetTv((int)$item['tmdb_id'], $tmdbLangCode);
+            if ($td) {
+                if (!empty($td['name']))         $item['title']  = $td['name'];
+                if (!empty($td['poster_path']))  $item['poster'] = 'https://image.tmdb.org/t/p/w300' . $td['poster_path'];
+            }
+        } else {
+            $td = tmdbGetMovie((int)$item['tmdb_id'], $tmdbLangCode);
+            if ($td) {
+                if (!empty($td['title']))        $item['title']  = $td['title'];
+                if (!empty($td['poster_path']))  $item['poster'] = 'https://image.tmdb.org/t/p/w300' . $td['poster_path'];
+            }
         }
     }
 }
@@ -29,9 +38,10 @@ unset($item);
 $pdo->exec("CREATE TABLE IF NOT EXISTS wishlist (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL, tmdb_id INT NOT NULL,
+    media_type VARCHAR(10) NOT NULL DEFAULT 'movie',
     title VARCHAR(255) NOT NULL DEFAULT '', poster VARCHAR(500) NOT NULL DEFAULT '',
     year VARCHAR(4) NOT NULL DEFAULT '', added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_user_movie (user_id, tmdb_id)
+    UNIQUE KEY uniq_user_media (user_id, tmdb_id, media_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 $wStmt = $pdo->prepare("SELECT * FROM wishlist WHERE user_id = ? ORDER BY added_at DESC");
@@ -40,10 +50,18 @@ $wishlistMovies = $wStmt->fetchAll();
 
 foreach ($wishlistMovies as &$w) {
     if (!empty($w['tmdb_id'])) {
-        $td = tmdbGetMovie((int)$w['tmdb_id'], $tmdbLangCode);
-        if ($td) {
-            if (!empty($td['title']))        $w['title']  = $td['title'];
-            if (!empty($td['poster_path']))  $w['poster'] = 'https://image.tmdb.org/t/p/w300' . $td['poster_path'];
+        if (($w['media_type'] ?? 'movie') === 'tv') {
+            $td = tmdbGetTv((int)$w['tmdb_id'], $tmdbLangCode);
+            if ($td) {
+                if (!empty($td['name']))         $w['title']  = $td['name'];
+                if (!empty($td['poster_path']))  $w['poster'] = 'https://image.tmdb.org/t/p/w300' . $td['poster_path'];
+            }
+        } else {
+            $td = tmdbGetMovie((int)$w['tmdb_id'], $tmdbLangCode);
+            if ($td) {
+                if (!empty($td['title']))        $w['title']  = $td['title'];
+                if (!empty($td['poster_path']))  $w['poster'] = 'https://image.tmdb.org/t/p/w300' . $td['poster_path'];
+            }
         }
     }
 }
@@ -70,13 +88,16 @@ unset($w);
     <?php if (count($wishlistMovies) > 0): ?>
         <div class="movie-grid" style="margin-bottom:48px;">
             <?php foreach ($wishlistMovies as $w): ?>
+                <?php $wType = ($w['media_type'] ?? 'movie') === 'tv' ? 'tv' : 'movie';
+                      $wTypeQs = $wType === 'tv' ? '&type=tv' : ''; ?>
                 <div class="movie-card">
                     <button class="wish-btn active"
                         data-tmdb="<?php echo (int)$w['tmdb_id']; ?>"
+                        data-type="<?php echo $wType; ?>"
                         data-title="<?php echo htmlspecialchars($w['title'], ENT_QUOTES); ?>"
                         data-poster="<?php echo htmlspecialchars($w['poster'], ENT_QUOTES); ?>"
                         data-year="<?php echo htmlspecialchars($w['year'], ENT_QUOTES); ?>">★</button>
-                    <a href="<?php echo $base; ?>/movie.php?tmdb_id=<?php echo (int)$w['tmdb_id']; ?>">
+                    <a href="<?php echo $base; ?>/movie.php?tmdb_id=<?php echo (int)$w['tmdb_id'] . $wTypeQs; ?>">
                         <?php if (!empty($w['poster'])): ?>
                             <img src="<?php echo htmlspecialchars($w['poster']); ?>" alt="Poster">
                         <?php else: ?>
@@ -106,8 +127,9 @@ unset($w);
         <div class="profile-reviews">
             <?php foreach ($userReviews as $item): ?>
                 <?php
+                    $itemTypeQs = ($item['media_type'] ?? 'movie') === 'tv' ? '&type=tv' : '';
                     $movieUrl = $item['tmdb_id']
-                        ? $base . '/movie.php?tmdb_id=' . (int)$item['tmdb_id']
+                        ? $base . '/movie.php?tmdb_id=' . (int)$item['tmdb_id'] . $itemTypeQs
                         : $base . '/movie.php?id='      . (int)$item['movie_id'];
                 ?>
                 <div class="profile-review-card">
@@ -144,10 +166,11 @@ document.querySelectorAll('.wish-btn').forEach(btn => {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: new URLSearchParams({
-                tmdb_id: this.dataset.tmdb,
-                title:   this.dataset.title,
-                poster:  this.dataset.poster,
-                year:    this.dataset.year
+                tmdb_id:    this.dataset.tmdb,
+                media_type: this.dataset.type,
+                title:      this.dataset.title,
+                poster:     this.dataset.poster,
+                year:       this.dataset.year
             })
         })
         .then(r => r.json())

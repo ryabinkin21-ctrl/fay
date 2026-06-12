@@ -198,6 +198,90 @@ function tmdbGetGenresMap(string $lang = 'en-US'): array {
     return $map;
 }
 
+// ─── TV / series helpers ─────────────────────────────────────────────────────
+// TMDB serves series under /tv with different field names than /movie:
+//   title->name, release_date->first_air_date, director->created_by[].name
+
+function tmdbGetTv(int $tmdbId, string $lang = 'en-US'): ?array {
+    $url = "https://api.themoviedb.org/3/tv/{$tmdbId}?language={$lang}&append_to_response=credits";
+    return tmdbCached($url);
+}
+
+function tmdbSearchTv(string $query, int $page = 1, string $lang = 'en-US'): ?array {
+    $url = "https://api.themoviedb.org/3/search/tv?query=" . urlencode($query) . "&language={$lang}&page={$page}";
+    return tmdbCached($url);
+}
+
+function tmdbGetDiscoverTv(string $sort = 'popularity.desc', int $page = 1, string $lang = 'en-US', int $genreId = 0): ?array {
+    $today  = date('Y-m-d');
+    $extra  = str_starts_with($sort, 'vote_average') ? '&vote_count.gte=200' : '';
+    $extra .= $genreId ? '&with_genres=' . $genreId : '';
+    $extra .= '&first_air_date.lte=' . $today;
+    $extra .= '&without_origin_country=IN';
+    $url    = "https://api.themoviedb.org/3/discover/tv?sort_by={$sort}&language={$lang}&page={$page}{$extra}";
+    return tmdbCached($url);
+}
+
+function tmdbGetTvGenresMap(string $lang = 'en-US'): array {
+    $url  = "https://api.themoviedb.org/3/genre/tv/list?language={$lang}";
+    $data = tmdbCached($url);
+    if (!$data || empty($data['genres'])) return [];
+    $map  = [];
+    foreach ($data['genres'] as $g) $map[$g['id']] = $g['name'];
+    return $map;
+}
+
+function tmdbGetTvTrailer(int $tmdbId): ?string {
+    $url  = "https://api.themoviedb.org/3/tv/{$tmdbId}/videos?language=en-US";
+    $data = tmdbCached($url);
+    if (!$data || empty($data['results'])) return null;
+    foreach ($data['results'] as $v) {
+        if ($v['site'] === 'YouTube' && $v['type'] === 'Trailer' && ($v['official'] ?? false)) return $v['key'];
+    }
+    foreach ($data['results'] as $v) {
+        if ($v['site'] === 'YouTube' && $v['type'] === 'Trailer') return $v['key'];
+    }
+    foreach ($data['results'] as $v) {
+        if ($v['site'] === 'YouTube') return $v['key'];
+    }
+    return null;
+}
+
+function tmdbTvCreators(array $tv): string {
+    return implode(', ', array_column($tv['created_by'] ?? [], 'name'));
+}
+
+// Fuzzy series search mirroring tmdbSearchFuzzy but on name/original_name fields.
+function tmdbSearchTvFuzzy(string $query, int $page = 1, string $lang = 'en-US'): array {
+    $seen    = [];
+    $results = [];
+    $queryLc = mb_strtolower($query, 'UTF-8');
+
+    $add = function(array $items) use (&$seen, &$results, $queryLc) {
+        foreach ($items as $m) {
+            if (empty($m['poster_path']) || isset($seen[$m['id']])) continue;
+            $nameLc = mb_strtolower($m['name'] ?? '', 'UTF-8');
+            $origLc = mb_strtolower($m['original_name'] ?? '', 'UTF-8');
+            similar_text($queryLc, $nameLc, $pct1);
+            similar_text($queryLc, $origLc, $pct2);
+            $m['_score']    = max($pct1, $pct2);
+            $seen[$m['id']] = true;
+            $results[]      = $m;
+        }
+    };
+
+    $add(tmdbSearchTv($query, $page, $lang)['results'] ?? []);
+    if ($lang !== 'en-US') {
+        $add(tmdbSearchTv($query, $page, 'en-US')['results'] ?? []);
+    }
+    if (preg_match('/[а-яёА-ЯЁ]/u', $query)) {
+        $add(tmdbSearchTv(tmdbTranslit($query), 1, 'en-US')['results'] ?? []);
+    }
+
+    usort($results, fn($a, $b) => ($b['_score'] ?? 0) <=> ($a['_score'] ?? 0));
+    return $results;
+}
+
 // ─── Legacy functions (used by admin/import_movies.php) ──────────────────────
 
 function getGenresMap(): array {
@@ -227,4 +311,13 @@ function getMovieFromTMDB(string $title): ?array {
     $movie['genres_string'] = implode(', ', $genres);
     $movie['director_name'] = getDirectorFromTMDB($movie['id']);
     return $movie;
+}
+
+/* ── runtime schema migration ─────────────────────────────────────
+   db.php is per-host (gitignored), so the media_type migration is
+   triggered here instead: tmdb.php is included right after db.php on
+   every page that reads media_type, so $pdo already exists.          */
+if (isset($pdo) && $pdo instanceof PDO) {
+    require_once __DIR__ . '/schema.php';
+    fay_ensure_media_schema($pdo);
 }

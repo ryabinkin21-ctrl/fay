@@ -12,7 +12,8 @@ $movies = $pdo->query("SELECT * FROM movies ORDER BY id DESC")->fetchAll();
 
 $reviews = $pdo->query("
     SELECT reviews.id, reviews.score, reviews.review_text, reviews.created_at,
-           users.username, movies.title AS movie_title, movies.id AS movie_id, movies.tmdb_id
+           users.username, movies.title AS movie_title, movies.id AS movie_id,
+           movies.tmdb_id, movies.media_type
     FROM reviews
     JOIN users  ON reviews.user_id  = users.id
     JOIN movies ON reviews.movie_id = movies.id
@@ -117,8 +118,9 @@ $reviews = $pdo->query("
                 <?php if (count($reviews) > 0): ?>
                     <?php foreach ($reviews as $r): ?>
                         <?php
+                            $rTypeQs = ($r['media_type'] ?? 'movie') === 'tv' ? '&type=tv' : '';
                             $movieUrl = $r['tmdb_id']
-                                ? $base . '/movie.php?tmdb_id=' . (int)$r['tmdb_id']
+                                ? $base . '/movie.php?tmdb_id=' . (int)$r['tmdb_id'] . $rTypeQs
                                 : $base . '/movie.php?id='      . (int)$r['movie_id'];
                         ?>
                         <tr>
